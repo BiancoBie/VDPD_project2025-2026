@@ -19,16 +19,19 @@ method Main()
       print "Encoding", "\n";
       var width : uint32 := pack(input[0..4]);
       var height : uint32 := pack(input[4..8]);
+      var channels : byte := FileInput.Reader.getChannels();
+      assert 3<= channels as int <=4;
       print "Width = ", width, "\n";
       print "Height = ", height, "\n";
-      if (input.Length as int - 8 != width as int * height as int * 3)
+      print "Channels = ", channels, "\n";
+      if (input.Length as int - 8 != width as int * height as int * channels as int)
       {
-        print "Invalid input (width * height)";
+        print "Invalid input (width * height * channels)";
       }
       else
       {
         print "Building image\n";
-        var image : Image := Image(Desc(width, height, 3, SRGB), input[8..]);
+        var image : Image := Image(Desc(width, height, channels as Channels, SRGB), input[8..]);
         var result : array<byte>;
         var len : int;
         print "Start encoding\n";
@@ -39,7 +42,7 @@ method Main()
         {
           print repeat;
           input := FileInput.Reader.getContent();
-          image := Image(Desc(width, height, 3, SRGB), input[8..]);
+          image := Image(Desc(width, height, channels as Channels, SRGB), input[8..]);
           result, len := encodeAll(image);
           repeat := repeat + 1;
         }

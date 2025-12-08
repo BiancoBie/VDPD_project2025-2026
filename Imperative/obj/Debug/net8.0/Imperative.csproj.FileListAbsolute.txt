@@ -1,0 +1,15 @@
+C:\Users\Bianca\Desktop\VDPD\Project\VDPD_project2025-2026\Imperative\obj\Debug\net8.0\Imperative.GeneratedMSBuildEditorConfig.editorconfig
+C:\Users\Bianca\Desktop\VDPD\Project\VDPD_project2025-2026\Imperative\obj\Debug\net8.0\Imperative.AssemblyInfoInputs.cache
+C:\Users\Bianca\Desktop\VDPD\Project\VDPD_project2025-2026\Imperative\obj\Debug\net8.0\Imperative.AssemblyInfo.cs
+C:\Users\Bianca\Desktop\VDPD\Project\VDPD_project2025-2026\Imperative\obj\Debug\net8.0\Imperative.csproj.CoreCompileInputs.cache
+C:\Users\Bianca\Desktop\VDPD\Project\VDPD_project2025-2026\Imperative\obj\Debug\net8.0\Imperative.sourcelink.json
+C:\Users\Bianca\Desktop\VDPD\Project\VDPD_project2025-2026\Imperative\bin\Debug\net8.0\Imperative.exe
+C:\Users\Bianca\Desktop\VDPD\Project\VDPD_project2025-2026\Imperative\bin\Debug\net8.0\Imperative.deps.json
+C:\Users\Bianca\Desktop\VDPD\Project\VDPD_project2025-2026\Imperative\bin\Debug\net8.0\Imperative.runtimeconfig.json
+C:\Users\Bianca\Desktop\VDPD\Project\VDPD_project2025-2026\Imperative\bin\Debug\net8.0\Imperative.dll
+C:\Users\Bianca\Desktop\VDPD\Project\VDPD_project2025-2026\Imperative\bin\Debug\net8.0\Imperative.pdb
+C:\Users\Bianca\Desktop\VDPD\Project\VDPD_project2025-2026\Imperative\obj\Debug\net8.0\Imperative.dll
+C:\Users\Bianca\Desktop\VDPD\Project\VDPD_project2025-2026\Imperative\obj\Debug\net8.0\refint\Imperative.dll
+C:\Users\Bianca\Desktop\VDPD\Project\VDPD_project2025-2026\Imperative\obj\Debug\net8.0\Imperative.pdb
+C:\Users\Bianca\Desktop\VDPD\Project\VDPD_project2025-2026\Imperative\obj\Debug\net8.0\Imperative.genruntimeconfig.cache
+C:\Users\Bianca\Desktop\VDPD\Project\VDPD_project2025-2026\Imperative\obj\Debug\net8.0\ref\Imperative.dll
