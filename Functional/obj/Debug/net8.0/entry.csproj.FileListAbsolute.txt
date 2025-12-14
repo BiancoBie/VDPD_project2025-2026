@@ -1,0 +1,15 @@
+C:\Users\Bianca\Desktop\VDPD\Project\VDPD_project2025-2026\Functional\obj\Debug\net8.0\entry.GeneratedMSBuildEditorConfig.editorconfig
+C:\Users\Bianca\Desktop\VDPD\Project\VDPD_project2025-2026\Functional\obj\Debug\net8.0\entry.AssemblyInfoInputs.cache
+C:\Users\Bianca\Desktop\VDPD\Project\VDPD_project2025-2026\Functional\obj\Debug\net8.0\entry.AssemblyInfo.cs
+C:\Users\Bianca\Desktop\VDPD\Project\VDPD_project2025-2026\Functional\obj\Debug\net8.0\entry.csproj.CoreCompileInputs.cache
+C:\Users\Bianca\Desktop\VDPD\Project\VDPD_project2025-2026\Functional\obj\Debug\net8.0\entry.sourcelink.json
+C:\Users\Bianca\Desktop\VDPD\Project\VDPD_project2025-2026\Functional\entry.exe
+C:\Users\Bianca\Desktop\VDPD\Project\VDPD_project2025-2026\Functional\obj\Debug\net8.0\entry.dll
+C:\Users\Bianca\Desktop\VDPD\Project\VDPD_project2025-2026\Functional\obj\Debug\net8.0\refint\entry.dll
+C:\Users\Bianca\Desktop\VDPD\Project\VDPD_project2025-2026\Functional\obj\Debug\net8.0\entry.pdb
+C:\Users\Bianca\Desktop\VDPD\Project\VDPD_project2025-2026\Functional\entry.deps.json
+C:\Users\Bianca\Desktop\VDPD\Project\VDPD_project2025-2026\Functional\obj\Debug\net8.0\entry.genruntimeconfig.cache
+C:\Users\Bianca\Desktop\VDPD\Project\VDPD_project2025-2026\Functional\entry.runtimeconfig.json
+C:\Users\Bianca\Desktop\VDPD\Project\VDPD_project2025-2026\Functional\entry.dll
+C:\Users\Bianca\Desktop\VDPD\Project\VDPD_project2025-2026\Functional\obj\Debug\net8.0\ref\entry.dll
+C:\Users\Bianca\Desktop\VDPD\Project\VDPD_project2025-2026\Functional\entry.pdb

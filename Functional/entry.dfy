@@ -16,18 +16,21 @@ method Main()
     var b := FileInput.Reader.shouldEncode();
     if (b)
     {
-      print "Encoding";
+      print "Encoding", "\n";
       var width : uint32 := pack(input[0..4]);
       var height : uint32 := pack(input[4..8]);
-      print "Width = ", width;
-      print "Height = ", height;
-      if (input.Length as int - 8 != width as int * height as int * 3)
+      var channels : byte := FileInput.Reader.getChannels();
+      assert 3<= channels as int <=4;
+      print "Width = ", width, "\n";
+      print "Height = ", height, "\n";
+      print "Channels = ", channels, "\n";
+      if (input.Length as int - 8 != width as int * height as int * channels as int)
       {
-        print "Invalid input (width * height)";
+        print "Invalid input (width * height * channels)";
       }
       else
       {
-        var image : Image := Image(Desc(width, height, 3, SRGB), input[8..]);
+        var image : Image := Image(Desc(width, height, channels as Channels, SRGB), input[8..]);
         var s : seq<byte> := encodeAll(image);
         var repeat := 0;
         while (repeat < 0)
@@ -35,7 +38,7 @@ method Main()
         {
           //print repeat;
           input := FileInput.Reader.getContent();
-          image := Image(Desc(width, height, 3, SRGB), input[8..]);
+          image := Image(Desc(width, height, channels as Channels, SRGB), input[8..]);
           s := encodeAll(image);
           repeat := repeat + 1;
         }
