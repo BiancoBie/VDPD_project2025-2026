@@ -5,6 +5,7 @@ https://qoiformat.org/qoi-specification.pdf
 
 (C) Stefan Ciobaca 2023-2024
  */
+include "qoi.dfy"
 
 datatype Option<T> = None | Some(some:T)
 
@@ -67,3 +68,21 @@ lemma unpack_pack(x : uint32)
   ensures pack(unpack(x)) == x
 {
 }
+
+// Converteste recursiv OpChain in secventa matematica pentru verificare
+ghost function OpChainToSeq(c: OpChain): seq<Op>
+{
+  match c
+  case EmptyOp => []
+  case LinkOp(op, next) => [op] + OpChainToSeq(next)
+}
+
+// Calculeaza lungimea totala a datelor dintr-un ByteChain
+ghost function ByteChainLength(c: ByteChain): int
+{
+  match c
+  case EmptyByte => 0
+  case LinkByte(data, next) => |data| + ByteChainLength(next)
+}
+
+  

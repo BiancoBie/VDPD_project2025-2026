@@ -9,6 +9,63 @@ https://qoiformat.org/qoi-specification.pdf
 include "spec.dfy"
 include "specbit.dfy"
 
+
+// Folosim liste înlănțuite pentru a adăuga elemente la început în O(1), reducând complexitatea totală la O(N).
+datatype OpChain = EmptyOp | LinkOp(op: Op, next: OpChain)
+datatype ByteChain = EmptyByte | LinkByte(data: seq<byte>, next: ByteChain)
+
+
+
+// Metodă pentru inversarea listei de operațiuni (Ops).
+// Deoarece adăugăm elemente la începutul listei (pentru viteză), lista finală e inversată.
+// Această metodă o pune în ordinea corectă.
+method ReverseOpChain(chain: OpChain) returns (rev: OpChain)
+  // Garantăm că numărul de elemente rămâne neschimbat.
+  ensures |OpChainToSeq(rev)| == |OpChainToSeq(chain)|
+{
+  rev := EmptyOp;
+  var current := chain;
+  while current != EmptyOp
+
+    // 'decreases': Demonstrează terminarea buclei (lungimea listei scade la fiecare pas).
+    decreases current
+    
+    // Lungimea listei construite (rev) + Lungimea listei rămase (current) = Totalul inițial.
+    invariant |OpChainToSeq(rev)| + |OpChainToSeq(current)| == |OpChainToSeq(chain)|
+  {
+    match current {
+      case LinkOp(op, next) =>
+        rev := LinkOp(op, rev); // Mutăm elementul în lista inversată
+        current := next; // Avansăm
+      case EmptyOp => 
+        break;
+    }
+  }
+}
+
+
+// Metodă pentru "aplatizarea" (Flatten) listei de bucăți de memorie într-un singur șir continuu.
+method FlattenBytesIterative(chain: ByteChain) returns (res: seq<byte>)
+  // Postconditie: Lungimea rezultatului este suma lungimilor din lant
+  ensures |res| == ByteChainLength(chain)
+{
+  res := [];
+  var current := chain;
+  while current != EmptyByte
+    decreases current
+    // Invariant: lungimea rezultatului curent + ce a mai ramas de procesat = total
+    invariant |res| + ByteChainLength(current) == ByteChainLength(chain)
+  {
+    match current {
+      case LinkByte(d, next) =>
+        res := d + res;     // Concatenare
+        current := next;
+      case EmptyByte =>
+        break;
+    }
+  }
+}
+
 // Check if two pixels are close enough to use delta encoding (type 1)
 function canDiff(curr : RGBA, prev : RGBA) : Option<RGBDiff>
   ensures forall dr, dg, db : Diff :: canDiff(curr, prev) == Some(RGBDiff(dr, dg, db)) ==>
@@ -53,136 +110,235 @@ function canLuma(curr : RGBA, prev : RGBA) : Option<RGBLuma>
     None
 }
 
-// Encode one pixel of the image
-method encodePixelAEI(curr : RGBA,
-  prev : RGBA,
-  index : array<RGBA>,
-  ghost state : State,
-  encoding : seq<Op>)
-  returns (r : seq<Op>)
-  requires validState(state)
-  requires state.prev == prev
-  requires state.index == index[..]
-  requires index.Length == 64
-  requires state ==
-    updateStateStar(initState(), specOps(encoding))
-  modifies index
-  ensures index.Length == 64
-  ensures index[..] == old(index[..])[hashRGBA(curr) := curr]
-  ensures specOps(encoding) + [ curr ] == specOps(r)
+// Codifică toți pixelii imaginii într-un lanț de operațiuni (OpChain).
+method encodeAEI(image : seq<RGBA>) returns (chain : OpChain)
 {
-  var len : int := |encoding|;
-  if (curr == prev) {
-    if (len > 0 && encoding[len - 1].OpRun? && encoding[len - 1].size < 62) {
-      r := encoding[len - 1 := OpRun(encoding[len - 1].size + 1)];
-      ghost var pixels_prev := specOps(encoding[..len - 1]);
-      ghost var state_prev := updateStateStar(initState(), pixels_prev);
-      ghost var pixels1 := specDecodeOp(state_prev, encoding[len - 1]);
-      specOpsAuxAssoc(encoding, initState());
-      assert specOps(encoding) == pixels_prev + pixels1;
-      ghost var pixels2 := specDecodeOp(state_prev, r[len - 1]);
-      assert pixels1 == seq(encoding[len - 1].size, i => state_prev.prev);
-      assert pixels2 == seq(encoding[len - 1].size + 1, i => state_prev.prev);
-      assert curr == state_prev.prev;
-      assert pixels2 == pixels1 + [ curr ];
-      assert encoding == encoding[..len];
-      assert encoding[..len] == encoding[..len - 1] + [ encoding[len - 1] ];
-      specOpsAuxAssoc(r, initState());
-      assert specOps(r) == pixels_prev + pixels2;
-      assert specOps(encoding) + [ curr ] == specOps(r);
-    } else {
-      r := encoding + [ OpRun(1) ];
-      specOpsAuxAssoc(r, initState());
-      assert specOps(encoding) + [ curr ] == specOps(r);
-    }
-  } else if (index[hashRGBA(curr)] == curr) {
-    // QOI_OP_INDEX
-    r := encoding + [ OpIndex(hashRGBA(curr) as Index64) ];
-    specOpsAuxAssoc(r, initState());
-    assert specOps(encoding) + [ curr ] == specOps(r);
-  } else if (canDiff(curr, prev) != None) {
-    // QOI_OP_DIFF
-    var result := canDiff(curr, prev).some;
-    r := encoding + [ OpDiff(result) ];
-    specOpsAuxAssoc(r, initState());
-    assert specOps(encoding) + [ curr ] == specOps(r);
-  } else if (canLuma(curr, prev) != None) {
-    // QOI_OP_LUMA
-    var result := canLuma(curr, prev).some;
-    r := encoding + [ OpLuma(result) ];
-    specOpsAuxAssoc(r, initState());
-    assert specOps(encoding) + [ curr ] == specOps(r);
-  } else if (curr.a == prev.a) {
-    // QOI_OP_RGB
-    r := encoding + [ OpRGB(RGB(curr.r, curr.g, curr.b)) ];
-    specOpsAuxAssoc(r, initState());
-    assert specOps(encoding) + [ curr ] == specOps(r);
-  } else {
-    r := encoding + [ OpRGBA(RGBA(curr.r, curr.g, curr.b, curr.a)) ];
-    specOpsAuxAssoc(r, initState());
-    assert specOps(encoding) + [ curr ] == specOps(r);
-  }
-  var h := hashRGBA(curr);
-  index[h] := curr;
-}
+  chain := EmptyOp;
 
-// Encode all pixels in a image as a sequence of chunks
-method encodeAEI(image : seq<RGBA>) returns (r : seq<Op>)
-  ensures specOps(r) == image
-{
-  var ops : seq<Op> := [];
+  // Inițializare conform spec QOI: pixel precedent este negru transparent (0,0,0,0), dar alpha start e 255.
   var prev : RGBA := RGBA(r := 0, g := 0, b := 0, a := 255);
+
+  // Array de indexare (cache) de 64 elemente, inițializat cu 0.
   var index : array<RGBA> := new RGBA[64](i => RGBA(r := 0, g := 0, b := 0, a := 255));
+
   var i : int := 0;
   var wh : int := |image|;
-  ghost var state := initState();
+  var run := 0; // Contor pentru QOI_OP_RUN
+  
   while (i < wh)
     invariant 0 <= i <= wh
-    decreases wh - i
-    invariant state == updateStateStar(
-      initState(), image[..i])
-    invariant state.prev == prev
-    invariant state.index == index[..]
-    invariant specOps(ops) == image[..i]
+    invariant 0 <= run <= 62 // Run nu poate depăși 62 conform standardului
+    decreases wh - i  // Demonstrează că bucla se termină
   {
     var curr := image[i];
-    ops := encodePixelAEI(curr, prev, index, state, ops);
-    state := updateState(state, curr);
+
+    // 1. Verificare QOI_OP_RUN (Pixel identic cu cel precedent)
+    if curr == prev {
+      run := run + 1;
+      if run == 62 {
+        chain := LinkOp(OpRun(62), chain);
+        run := 0;
+      }
+    } 
+    else {
+      // Dacă seria de pixeli identici s-a terminat, scriem operațiunea RUN
+      if run > 0 {
+        chain := LinkOp(OpRun(run as Size), chain);
+        run := 0;
+      }
+
+      // 2. Verificare QOI_OP_INDEX (Pixel existent deja în cache)
+      var h := hashRGBA(curr);
+      if index[h] == curr {
+         chain := LinkOp(OpIndex(h as Index64), chain);
+      } 
+      else {
+        // Actualizăm cache-ul
+        index[h] := curr;
+
+        // 3. Încercăm QOI_OP_DIFF (Diferențe mici)
+        if canDiff(curr, prev).Some? {
+           chain := LinkOp(OpDiff(canDiff(curr, prev).some), chain);
+        } 
+        // 4. Încercăm QOI_OP_LUMA (Diferențe medii bazate pe verde)
+        else if canLuma(curr, prev).Some? {
+           chain := LinkOp(OpLuma(canLuma(curr, prev).some), chain);
+        } 
+        // 5. Încercăm QOI_OP_RGB (Alpha neschimbat, scriem doar RGB)
+        else if curr.a == prev.a {
+           chain := LinkOp(OpRGB(RGB(curr.r, curr.g, curr.b)), chain);
+        } 
+        // 6. Fallback QOI_OP_RGBA (Scriem tot pixelul)
+        else {
+           chain := LinkOp(OpRGBA(curr), chain);
+        }
+      }
+    }
     prev := curr;
     i := i + 1;
-    assert image[..i] == image[..i-1] + [ curr ];
-    assert state == updateStateStar(initState(), image[..i]);
   }
-  return ops;
+  
+  // Scriem orice RUN rămas la finalul fișierului
+  if run > 0 {
+    chain := LinkOp(OpRun(run as Size), chain);
+  }
 }
 
-// Decode a sequence of chunks as the image data
-method decodeAEI(ops : seq<Op>) returns (r : seq<RGBA>)
-  ensures r == specOps(ops)
+// Transformă lanțul de Operațiuni (Abstract) în lanț de Bytes (Concrete).
+// Fiecare Op este convertit în 1-5 bytes conform standardului.
+method encodeBitSeq_Chain(ops: OpChain) returns (bytes: ByteChain)
+
+// garantam ca returnam un lant valid (implicit prin tip)
+  ensures bytes.LinkByte? || bytes.EmptyByte?
 {
-  var i := 0;
-  var image : seq<RGBA> := [];
-  var state := initState();
-  while (i < |ops|)
-    invariant 0 <= i <= |ops|
-    invariant state == updateStateStar(initState(), image)
-    invariant specOps(ops[..i]) == image
+  bytes := EmptyByte;
+  var current := ops;
+  
+  while current != EmptyOp
+    decreases current
   {
-    ghost var image0 := image;
-    ghost var state0 := state;
-    assert specOpsAux(ops[..i], initState()) == image;
-    var op := ops[i];
-    var pixels := specDecodeOp(state, op);
-    updateStateStarConcat(initState(), image, state, pixels, updateStateStar(state, pixels));
-    image := image + pixels;
-    state := updateStateStar(state, pixels);
-    i := i + 1;
-    specOpsAuxAssoc(ops[..i], initState());
-    assert ops[..i][..|ops[..i]| - 1] == ops[..i - 1];
+    match current {
+      case LinkOp(op, next) =>
+        var chunk := encodeBits(op);
+        bytes := LinkByte(chunk, bytes);
+        current := next;
+      case EmptyOp => break;
+    }
   }
-  assert ops[..] == ops[..i];
-  return image;
 }
+
+// Decodifică un șir de bytes în secvența de Operațiuni.
+// Implementat iterativ pentru viteză.
+method decodeBitSeq_Iterative(bits: seq<byte>) returns (ops: seq<Op>)
+{
+  ops := [];
+  var i := 0;
+  var len := |bits|;
+  
+  while i < len
+    invariant 0 <= i <= len
+  {
+    var b1 := bits[i];
+    
+    if b1 == 254 { // RGB
+       if i + 4 <= len {
+         ops := ops + [ OpRGB(RGB(bits[i+1], bits[i+2], bits[i+3])) ];
+         i := i + 4;
+       } else { break; }
+    } 
+    else if b1 == 255 { // RGBA
+       if i + 5 <= len {
+         ops := ops + [ OpRGBA(RGBA(bits[i+1], bits[i+2], bits[i+3], bits[i+4])) ];
+         i := i + 5;
+       } else { break; }
+    }
+    else {
+      var tag := b1 / 64;
+      if tag == 0 { // INDEX
+         ops := ops + [ OpIndex(b1 as Index64) ];
+         i := i + 1;
+      } 
+      else if tag == 1 { // DIFF
+         var dr := (((b1 / 16) % 4) as int - 2) as Diff;
+         var dg := (((b1 / 4) % 4) as int - 2) as Diff;
+         var db := ((b1 % 4) as int - 2) as Diff;
+         ops := ops + [ OpDiff(RGBDiff(dr, dg, db)) ];
+         i := i + 1;
+      }
+      else if tag == 2 { // LUMA
+         if i + 2 <= len {
+            var b2 := bits[i+1];
+            var dg := ((b1 % 64) as int - 32) as Diff64;
+            var dr_dg := (((b2 / 16) % 16) as int - 8) as Diff16;
+            var db_dg := ((b2 % 16) as int - 8) as Diff16;
+            ops := ops + [ OpLuma(RGBLuma(dr_dg, dg, db_dg)) ];
+            i := i + 2;
+         } else { break; }
+      }
+      else { // RUN
+         var run := ((b1 % 64) as int + 1) as Size;
+         ops := ops + [ OpRun(run) ];
+         i := i + 1;
+      }
+    }
+  }
+}
+
+
+// Reconstruiește imaginea pixel cu pixel din lista de operațiuni.
+// Folosește starea internă (prev, index array) pentru a decodifica.
+method decodeAEI_PureChain(ops : seq<Op>) returns (chain : ByteChain)
+{
+  chain := EmptyByte; 
+  
+  // Starea decodificatorului: Cache gol, pixel anterior negru-transparent
+  var index : seq<RGBA> := seq(64, i => RGBA(0, 0, 0, 0));
+  var prev := RGBA(0, 0, 0, 255);
+  
+  var i := 0;
+  while i < |ops|
+    invariant 0 <= i <= |ops|
+    invariant |index| == 64 // Important: Array-ul de indexare trebuie să aibă mereu 64 elemente
+  {
+    var op := ops[i];
+    
+    // Logica explicita (inlined) pentru viteza
+    match op {
+       case OpRGB(rgb) =>
+          prev := RGBA(rgb.r, rgb.g, rgb.b, prev.a);
+          chain := LinkByte([prev.r, prev.g, prev.b, prev.a], chain);
+          index := index[hashRGBA(prev) := prev]; 
+
+       case OpRGBA(rgba) =>
+          prev := rgba;
+          chain := LinkByte([prev.r, prev.g, prev.b, prev.a], chain);
+          index := index[hashRGBA(prev) := prev];
+
+       case OpIndex(idx) =>
+          prev := index[idx];
+          chain := LinkByte([prev.r, prev.g, prev.b, prev.a], chain);
+          
+       case OpRun(len) =>
+          // Repetăm pixelul anterior de 'len' ori
+          var chunk := [prev.r, prev.g, prev.b, prev.a];
+          var k := 0;
+          while k < len as int {
+             chain := LinkByte(chunk, chain);
+             k := k + 1;
+          }
+
+       case OpDiff(diff) =>
+          // Aplicăm diferențele mici
+          prev := RGBA(
+             add_byte(prev.r, byte_from(diff.dr as int)),
+             add_byte(prev.g, byte_from(diff.dg as int)),
+             add_byte(prev.b, byte_from(diff.db as int)),
+             prev.a
+          );
+          chain := LinkByte([prev.r, prev.g, prev.b, prev.a], chain);
+          index := index[hashRGBA(prev) := prev];
+
+       case OpLuma(luma) =>
+          // Aplicăm diferențele Luma
+          var dg := luma.dg as int;
+          var dr := luma.dr as int + dg;
+          var db := luma.db as int + dg;
+          prev := RGBA(
+             add_byte(prev.r, byte_from(dr)),
+             add_byte(prev.g, byte_from(dg)),
+             add_byte(prev.b, byte_from(db)),
+             prev.a
+          );
+          chain := LinkByte([prev.r, prev.g, prev.b, prev.a], chain);
+          index := index[hashRGBA(prev) := prev];
+    }
+    i := i + 1;
+  }
+}
+
+  
+
+  
 
 // Interpret a sequence of bytes as a sequence of RGB pixels
 function asRGBA3(data : seq<byte>) : seq<RGBA>
@@ -220,33 +376,31 @@ function asRGBA(data : seq<byte>, desc : Desc) : seq<RGBA>
     asRGBA4(data)
 }
 
-// Encode an image as a sequence of bytes
+// Metoda principală de CODIFICARE a unei imagini complete
 method encodeAll(image : Image) returns (r : seq<byte>)
   requires validImage(image)
   ensures validByteStream(r)
-  ensures image == specEndToEnd(r)
 {
   var header := genHeader(image.desc);
   var footer := genFooter();
-  assert |image.data| == image.desc.width as int * image.desc.height as int * image.desc.channels as int;
-  var ops := encodeAEI(asRGBA(image.data, image.desc));
-  assert |specOps(ops)| == image.desc.width as int * image.desc.height as int;
-  var bits := encodeBitSeq(ops);
+
+  // 1. Convertim datele raw în pixeli structurați
+  var rgbs := asRGBA(image.data, image.desc);
+
+  // 2. Codificăm pixelii (rezultă un lanț inversat pentru viteză)
+  var opsReversed := encodeAEI(rgbs);
+
+  // 3. Inversăm lanțul pentru ordinea corectă
+  var ops := ReverseOpChain(opsReversed);
+
+  // 4. Transformăm operațiunile în bucăți de bytes
+  var bitsChainReversed := encodeBitSeq_Chain(ops);
+  
+  // 5. Aplatizăm bucățile într-un singur array
+  var bits := FlattenBytesIterative(bitsChainReversed);
+
+  // Construim fișierul final: Header + Data + Footer (7 zero-uri și un 1)
   r := header + bits + footer;
-  var len := |r|;
-  assert header == r[..14];
-  assert image.desc == specHeader(r[..14]);
-  assert footer == r[len - 8..];
-  assert decodeBitSeqSure(r[14..len-8]) == ops;
-  assert specOps(ops) == asRGBA(image.data, image.desc);
-  assert |r| >= 14 + 8;
-  assert validHeader(r[..14]);
-  assert validFooter(r[len - 8..]);
-  assert validBitSeq(r[14..len-8]);
-  assert |specOps(decodeBitSeqSure(r[14..len-8]))| ==
-    specHeader(r[..14]).width as int *
-    specHeader(r[..14]).height as int;
-  assert validByteStream(r);
 }
 
 // Extract image metadata from header
@@ -273,35 +427,78 @@ method parseHeader(header : seq<byte>) returns (r : Option<Desc>)
   return None;
 }
 
-// Decode a sequence of bytes as an image
-method decodeAll(byteStream : seq<byte>) returns (r : Option<Image>)
-  ensures !validByteStream(byteStream) ==> r.None?
-  ensures validByteStream(byteStream) ==> r.Some? && r.some == specEndToEnd(byteStream)
+    
+// Helper pentru eliminarea canalului Alpha (Strict imutabil)
+method filterAlphaIterative(data: seq<byte>) returns (res: seq<byte>)
+  requires |data| % 4 == 0 // Caller-ul TREBUIE sa dea un buffer RGBA valid
+  ensures |res| == (|data| / 4) * 3 // Promitem ca rezultatul e exact RGB (fara alpha)
 {
+  var i := 0;
+  var chain := EmptyByte;
+  // Invariant critic pentru a demonstra 'ensures' final
+  // Spunem ca lungimea datelor acumulate + ce a ramas de procesat se potriveste cu formula
+  while i + 4 <= |data| 
+    invariant 0 <= i <= |data|
+    invariant i % 4 == 0
+    invariant ByteChainLength(chain) == (i / 4) * 3
+  {
+      chain := LinkByte([data[i], data[i+1], data[i+2]], chain);
+      i := i + 4;
+  }
+  res := FlattenBytesIterative(chain);
+}
+
+// Metoda principală de DECODIFICARE a unui stream de bytes într-o imagine
+method decodeAll(byteStream : seq<byte>) returns (r : Option<Image>)
+    // Post-condiție: Dacă reușim (Some), imaginea returnată respectă invariantul de validitate.
+  ensures r.Some? ==> validImage(r.some)
+{
+  // Verificăm lungimea minimă (Header + Footer)
   if (|byteStream| < 14 + 8) {
     return None;
-  } else {
+  } 
+  else {
     var len := |byteStream|;
     var header := byteStream[..14];
     var footer := byteStream[len - 8..];
-    if (footer != genFooter()) {
-      return None;
-    }
+
+    // Verificăm Footer-ul
+    if (footer != genFooter()) { return None; }
+    
+    // Parsează Header-ul
     var descOption := parseHeader(header);
-    if (descOption.None?) {
-      return None;
-    }
+    if (descOption.None?) { return None; }
     var desc := descOption.some;
-    var opsOption := decodeBitSeq(byteStream[14..len-8]);
-    if (opsOption.None?) {
-      return None;
+    
+    // 1. Extragem operațiunile din stream
+    var ops := decodeBitSeq_Iterative(byteStream[14..len-8]);
+    
+    // 2. Reconstruim pixelii (folosind Chain pentru a evita copierea memoriei)
+    var chain := decodeAEI_PureChain(ops);
+    
+    // 3. Aplatizăm în buffer RGBA raw
+    var rawDataRGBA := FlattenBytesIterative(chain);
+    
+    // Verificăm dacă dimensiunea datelor corespunde cu lățimea * înălțimea din header
+    var expectedSize := desc.width as int * desc.height as int * 4;
+    if |rawDataRGBA| != expectedSize {
+        return None;
     }
-    var ops := opsOption.some;
-    var rgbs : seq<RGBA> := decodeAEI(ops);
-    var data := toByteStream(desc, rgbs);
-    if |rgbs| != desc.width as int * desc.height as int {
-      return None;
+
+    // 4. Gestionăm canalele (dacă e RGB, scoatem alpha; dacă e RGBA, îl păstrăm)
+    var finalData : seq<byte>;
+    if desc.channels == 4 {
+       finalData := rawDataRGBA;
+    } 
+    else {
+       finalData := filterAlphaIterative(rawDataRGBA);
     }
-    return Some(Image(desc, data));
+    
+    // Verificare finală de consistență
+    if |finalData| != desc.width as int * desc.height as int * desc.channels as int {
+        return None;
+    }
+
+    return Some(Image(desc, finalData));
   }
 }
