@@ -22,3 +22,6 @@ To simply verify the development:
 ```
     dafny /vcsCores:8 /timeLimit:15 /trace helper.dfy spec.dfy specbit.dfy qoi.dfy
 ```
+
+Build: dafny build --target:cs entry.dfy file_input.cs --allow-warnings
+Run: dotnet run <inputfile>
