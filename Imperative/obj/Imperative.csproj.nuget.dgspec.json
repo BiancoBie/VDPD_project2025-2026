@@ -1,37 +1,30 @@
 {
   "format": 1,
   "restore": {
-    "C:\\Users\\Bianca\\Desktop\\VDPD\\Project\\VDPD_project2025-2026\\Imperative\\Imperative.csproj": {}
+    "C:\\Users\\Mesul\\Desktop\\Lab\\dafny\\VDPD_project2025-2026-Imperative_RGBAencoding\\Imperative\\Imperative.csproj": {}
   },
   "projects": {
-    "C:\\Users\\Bianca\\Desktop\\VDPD\\Project\\VDPD_project2025-2026\\Imperative\\Imperative.csproj": {
+    "C:\\Users\\Mesul\\Desktop\\Lab\\dafny\\VDPD_project2025-2026-Imperative_RGBAencoding\\Imperative\\Imperative.csproj": {
       "version": "1.0.0",
       "restore": {
-        "projectUniqueName": "C:\\Users\\Bianca\\Desktop\\VDPD\\Project\\VDPD_project2025-2026\\Imperative\\Imperative.csproj",
+        "projectUniqueName": "C:\\Users\\Mesul\\Desktop\\Lab\\dafny\\VDPD_project2025-2026-Imperative_RGBAencoding\\Imperative\\Imperative.csproj",
         "projectName": "Imperative",
-        "projectPath": "C:\\Users\\Bianca\\Desktop\\VDPD\\Project\\VDPD_project2025-2026\\Imperative\\Imperative.csproj",
-        "packagesPath": "C:\\Users\\Bianca\\.nuget\\packages\\",
-        "outputPath": "C:\\Users\\Bianca\\Desktop\\VDPD\\Project\\VDPD_project2025-2026\\Imperative\\obj\\",
+        "projectPath": "C:\\Users\\Mesul\\Desktop\\Lab\\dafny\\VDPD_project2025-2026-Imperative_RGBAencoding\\Imperative\\Imperative.csproj",
+        "packagesPath": "C:\\Users\\Mesul\\.nuget\\packages\\",
+        "outputPath": "C:\\Users\\Mesul\\Desktop\\Lab\\dafny\\VDPD_project2025-2026-Imperative_RGBAencoding\\Imperative\\obj\\",
         "projectStyle": "PackageReference",
-        "fallbackFolders": [
-          "C:\\Program Files (x86)\\Microsoft Visual Studio\\Shared\\NuGetPackages"
-        ],
         "configFilePaths": [
-          "C:\\Users\\Bianca\\AppData\\Roaming\\NuGet\\NuGet.Config",
-          "C:\\Program Files (x86)\\NuGet\\Config\\Microsoft.VisualStudio.FallbackLocation.config",
-          "C:\\Program Files (x86)\\NuGet\\Config\\Microsoft.VisualStudio.Offline.config"
+          "C:\\Users\\Mesul\\AppData\\Roaming\\NuGet\\NuGet.Config"
         ],
         "originalTargetFrameworks": [
-          "net8.0"
+          "net9.0"
         ],
         "sources": {
-          "C:\\Program Files (x86)\\Microsoft SDKs\\NuGetPackages\\": {},
-          "C:\\Program Files\\dotnet\\library-packs": {},
           "https://api.nuget.org/v3/index.json": {}
         },
         "frameworks": {
-          "net8.0": {
-            "targetAlias": "net8.0",
+          "net9.0": {
+            "targetAlias": "net9.0",
             "projectReferences": {}
           }
         },
@@ -44,11 +37,12 @@
           "enableAudit": "true",
           "auditLevel": "low",
           "auditMode": "direct"
-        }
+        },
+        "SdkAnalysisLevel": "9.0.300"
       },
       "frameworks": {
-        "net8.0": {
-          "targetAlias": "net8.0",
+        "net9.0": {
+          "targetAlias": "net9.0",
           "imports": [
             "net461",
             "net462",
@@ -65,7 +59,7 @@
               "privateAssets": "all"
             }
           },
-          "runtimeIdentifierGraphPath": "C:\\Program Files\\dotnet\\sdk\\8.0.202/PortableRuntimeIdentifierGraph.json"
+          "runtimeIdentifierGraphPath": "C:\\Program Files\\dotnet\\sdk\\9.0.305/PortableRuntimeIdentifierGraph.json"
         }
       }
     }

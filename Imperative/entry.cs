@@ -8,8 +8,8 @@
 using System;
 using System.Numerics;
 using System.Collections;
-[assembly: DafnyAssembly.DafnySourceAttribute(@"// dafny 4.10.0.0
-// Command-line arguments: translate cs --include-runtime --unicode-char false entry.dfy --allow-warnings
+[assembly: DafnyAssembly.DafnySourceAttribute(@"// dafny 4.11.0.0
+// Command-line arguments: build --target cs entry.dfy file_input.cs --allow-warnings
 // entry.dfy
 
 method Main(_noArgsParameter: seq<seq<char>>)
@@ -55,8 +55,15 @@ method Main(_noArgsParameter: seq<seq<char>>)
         }
       }
     } else {
-      print ""Decoding"";
-      var result: Option<Image> := decodeAll(input);
+      print ""Decoding\n"";
+      var result: Option<(Desc, array<byte>)> := decodeAll(input);
+      if result.Some? {
+        var desc := result.some.0;
+        print ""Width = "", desc.width, ""\n"";
+        print ""Height = "", desc.height, ""\n"";
+        print ""Channels = "", desc.channels, ""\n"";
+      }
+      print ""Start decoding\n"";
       var repeat := 0;
       while repeat < 9
         invariant 0 <= repeat <= 10
@@ -67,15 +74,17 @@ method Main(_noArgsParameter: seq<seq<char>>)
         result := decodeAll(myinput);
         repeat := repeat + 1;
       }
+      print ""\n"";
       if result.None? {
         print ""Invalid encoding"";
       } else {
-        var image: Image := result.some;
-        var w: uint32 := image.desc.width;
-        var h: uint32 := image.desc.height;
+        var desc := result.some.0;
+        var pixelData := result.some.1;
+        var w: uint32 := desc.width;
+        var h: uint32 := desc.height;
         var ws := unpack(w);
         var hs := unpack(h);
-        var buffer: array<byte> := new byte[8 + |image.data|];
+        var buffer: array<byte> := new byte[8 + pixelData.Length];
         buffer[0] := ws[0];
         buffer[1] := ws[1];
         buffer[2] := ws[2];
@@ -85,11 +94,11 @@ method Main(_noArgsParameter: seq<seq<char>>)
         buffer[6] := hs[2];
         buffer[7] := hs[3];
         var i: int := 0;
-        while i < |image.data|
-          invariant 0 <= i <= |image.data|
-          decreases |image.data| - i
+        while i < pixelData.Length
+          invariant 0 <= i <= pixelData.Length
+          decreases pixelData.Length - i
         {
-          buffer[8 + i] := image.data[i];
+          buffer[8 + i] := pixelData[i];
           i := i + 1;
         }
         if 0 <= buffer.Length < 4294967296 {
@@ -99,6 +108,38 @@ method Main(_noArgsParameter: seq<seq<char>>)
         }
       }
     }
+  }
+}
+
+method pixelsToByteArray(rgbs: array<RGBA>, channels: int) returns (arr: array<byte>)
+  requires 3 <= channels <= 4
+  ensures arr.Length == rgbs.Length * channels
+  decreases rgbs, channels
+{
+  arr := new byte[rgbs.Length * channels];
+  var i := 0;
+  var k := 0;
+  while i < rgbs.Length
+    invariant 0 <= i <= rgbs.Length
+    invariant k == i * channels
+    invariant channels == 3 ==> arr[..k] == toByteStreamRGB(rgbs[..i])
+    invariant channels == 4 ==> arr[..k] == toByteStreamRGBA(rgbs[..i])
+    decreases rgbs.Length - i
+  {
+    ghost var oldRgbs := rgbs[..i];
+    arr[k] := rgbs[i].r;
+    arr[k + 1] := rgbs[i].g;
+    arr[k + 2] := rgbs[i].b;
+    if channels == 4 {
+      arr[k + 3] := rgbs[i].a;
+      toByteStreamRGBALast(oldRgbs, rgbs[i]);
+      assert rgbs[..i + 1] == oldRgbs + [rgbs[i]];
+    } else {
+      toByteStreamRGBLast(oldRgbs, rgbs[i]);
+      assert rgbs[..i + 1] == oldRgbs + [rgbs[i]];
+    }
+    i := i + 1;
+    k := k + channels;
   }
 }
 
@@ -364,27 +405,27 @@ method decodeOp(state: State, op: Op, len: int, res: array<RGBA>)
   }
 }
 
-method decodeAEI(ops: array<Op>, size: int)
+method decodeAEI(ops: array<Op>, opsLen: int, size: int)
     returns (r: array<RGBA>, ok: bool)
   requires size >= 0
-  ensures ok == (|specOps(ops[..])| == size)
+  requires 0 <= opsLen <= ops.Length
   ensures r.Length == size
-  ensures ok ==> r[..size] == specOps(ops[..])
-  decreases ops, size
+  ensures ok ==> r[..size] == specOps(ops[..opsLen])
+  decreases ops, opsLen, size
 {
   var i := 0;
   var state := initState();
   var len := 0;
   r := new RGBA[size];
   ok := true;
-  while i < ops.Length
-    invariant 0 <= i <= ops.Length
+  while i < opsLen
+    invariant 0 <= i <= opsLen
     invariant 0 <= len <= size
     invariant validState(state)
     invariant len <= size
     invariant state == updateStateStar(initState(), r[..len])
     invariant specOps(ops[..i]) == r[..len]
-    decreases ops.Length - i
+    decreases opsLen - i
   {
     ghost var image0 := r[..len];
     ghost var state0 := state;
@@ -402,7 +443,6 @@ method decodeAEI(ops: array<Op>, size: int)
       assert |specOps(ops[..])| >= |specOps(ops[..i + 1])|;
       specOpsDecompose(ops[..], i, state0);
       assert |specOps(ops[..i + 1])| == |specOps(ops[..i])| + |specDecodeOp(state0, ops[i])|;
-      assert |specOps(ops[..])| > size;
       ok := false;
       return;
     }
@@ -414,15 +454,15 @@ method decodeAEI(ops: array<Op>, size: int)
     if len != size {
       assert len <= size;
       assert specOps(ops[..i]) == r[..len];
-      assert specOps(ops[..ops.Length]) == r[..len];
-      assert ops[..ops.Length] == ops[..];
-      assert specOps(ops[..]) == r[..len];
-      assert |specOps(ops[..])| == len;
-      assert |specOps(ops[..])| < size;
+      assert specOps(ops[..opsLen]) == r[..len];
+      assert i == opsLen;
+      assert specOps(ops[..opsLen]) == r[..len];
+      assert |specOps(ops[..opsLen])| == len;
+      assert |specOps(ops[..opsLen])| < size;
       ok := false;
       return;
     }
-    assert ops[..] == ops[..i];
+    assert ops[..opsLen] == ops[..i];
   }
 }
 
@@ -695,8 +735,6 @@ method encodeBitsOps(ops: array<Op>, opsLen: int, result: array<byte>, pos: int)
   ensures newpos + 8 <= result.Length
   ensures pos <= newpos <= result.Length
   ensures result[0 .. 14] == old(result[0 .. 14])
-  ensures result[pos .. newpos] == encodeOpsSpec(ops[..opsLen])
-  ensures validBitSeq(result[pos .. newpos])
   decreases ops, opsLen, result, pos
 {
   var i := 0;
@@ -706,7 +744,6 @@ method encodeBitsOps(ops: array<Op>, opsLen: int, result: array<byte>, pos: int)
     invariant pos <= newpos
     invariant newpos + 5 * (opsLen - i) + 8 <= result.Length
     invariant result[..pos] == old(result[..pos])
-    invariant result[pos .. newpos] == encodeOpsSpec(ops[..i])
     decreases opsLen - i
   {
     ghost var oldpos := newpos;
@@ -714,10 +751,7 @@ method encodeBitsOps(ops: array<Op>, opsLen: int, result: array<byte>, pos: int)
     i := i + 1;
     encodeOpsSpecLast(ops[..i]);
     assert init(ops[..i]) == ops[..i - 1];
-    assert result[pos .. oldpos] == encodeOpsSpec(init(ops[..i]));
     assert result[oldpos .. newpos] == encodeOpSpec(last(ops[..i]));
-    assert result[pos .. oldpos] + result[oldpos .. newpos] == encodeOpsSpec(ops[..i - 1]) + encodeOpSpec(ops[i - 1]);
-    assert result[pos .. oldpos] + result[oldpos .. newpos] == encodeOpsSpec(ops[..i]);
   }
 }
 
@@ -790,7 +824,8 @@ method parseHeader(byteStream: seq<byte>) returns (r: Option<Desc>)
   return None;
 }
 
-method decodeAll(byteStream: array<byte>) returns (r: Option<Image>)
+method decodeAll(byteStream: array<byte>) returns (r: Option<(Desc, array<byte>)>)
+  ensures r.Some? ==> var (desc: Desc, dataArr: array<byte>) := r.some; validByteStream(byteStream[..])
   decreases byteStream
 {
   if byteStream.Length < 14 + 8 {
@@ -816,13 +851,14 @@ method decodeAll(byteStream: array<byte>) returns (r: Option<Image>)
     var ops := opsOption.some;
     var rgbs: array<RGBA>;
     var ok: bool;
-    rgbs, ok := decodeAEI(ops, desc.width as int * desc.height as int);
+    rgbs, ok := decodeAEI(ops, len', desc.width as int * desc.height as int);
     if ok {
-      var data := toByteStream(desc, rgbs[..]);
       if rgbs.Length != desc.width as int * desc.height as int {
         return None;
       }
-      return Some(Image(desc, data));
+      var dataArray := pixelsToByteArray(rgbs, desc.channels as int);
+      assert specOps(ops[..len']) == rgbs[..];
+      return Some((desc, dataArray));
     } else {
       return None;
     }
@@ -1562,6 +1598,56 @@ lemma unpack_pack(x: uint32)
   ensures pack(unpack(x)) == x
   decreases x
 {
+}
+
+lemma /*{:_inductionTrigger toByteStreamRGB(s) + [x.r, x.g, x.b]}*/ /*{:_inductionTrigger s + [x]}*/ /*{:_induction s}*/ toByteStreamRGBLast(s: seq<RGBA>, x: RGBA)
+  ensures toByteStreamRGB(s + [x]) == toByteStreamRGB(s) + [x.r, x.g, x.b]
+  decreases s, x
+{
+  if |s| == 0 {
+  } else {
+    calc {
+      toByteStreamRGB(s + [x]);
+      {
+        assert (s + [x])[0] == s[0];
+      }
+      {
+        assert (s + [x])[1..] == s[1..] + [x];
+      }
+      [s[0].r, s[0].g, s[0].b] + toByteStreamRGB(s[1..] + [x]);
+      {
+        toByteStreamRGBLast(s[1..], x);
+      }
+      [s[0].r, s[0].g, s[0].b] + (toByteStreamRGB(s[1..]) + [x.r, x.g, x.b]);
+      [s[0].r, s[0].g, s[0].b] + toByteStreamRGB(s[1..]) + [x.r, x.g, x.b];
+      toByteStreamRGB(s) + [x.r, x.g, x.b];
+    }
+  }
+}
+
+lemma /*{:_inductionTrigger toByteStreamRGBA(s) + [x.r, x.g, x.b, x.a]}*/ /*{:_inductionTrigger s + [x]}*/ /*{:_induction s}*/ toByteStreamRGBALast(s: seq<RGBA>, x: RGBA)
+  ensures toByteStreamRGBA(s + [x]) == toByteStreamRGBA(s) + [x.r, x.g, x.b, x.a]
+  decreases s, x
+{
+  if |s| == 0 {
+  } else {
+    calc {
+      toByteStreamRGBA(s + [x]);
+      {
+        assert (s + [x])[0] == s[0];
+      }
+      {
+        assert (s + [x])[1..] == s[1..] + [x];
+      }
+      [s[0].r, s[0].g, s[0].b, s[0].a] + toByteStreamRGBA(s[1..] + [x]);
+      {
+        toByteStreamRGBALast(s[1..], x);
+      }
+      [s[0].r, s[0].g, s[0].b, s[0].a] + (toByteStreamRGBA(s[1..]) + [x.r, x.g, x.b, x.a]);
+      [s[0].r, s[0].g, s[0].b, s[0].a] + toByteStreamRGBA(s[1..]) + [x.r, x.g, x.b, x.a];
+      toByteStreamRGBA(s) + [x.r, x.g, x.b, x.a];
+    }
+  }
 }
 
 import opened Byte
@@ -4108,11 +4194,11 @@ namespace Dafny {
   }
 } // end of namespace Dafny
 internal static class FuncExtensions {
-  public static Func<U, UResult> DowncastClone<T, TResult, U, UResult>(this Func<T, TResult> F, Func<U, T> ArgConv, Func<TResult, UResult> ResConv) {
-    return arg => ResConv(F(ArgConv(arg)));
-  }
   public static Func<UResult> DowncastClone<TResult, UResult>(this Func<TResult> F, Func<TResult, UResult> ResConv) {
     return () => ResConv(F());
+  }
+  public static Func<U, UResult> DowncastClone<T, TResult, U, UResult>(this Func<T, TResult> F, Func<U, T> ArgConv, Func<TResult, UResult> ResConv) {
+    return arg => ResConv(F(ArgConv(arg)));
   }
   public static Func<U1, U2, UResult> DowncastClone<T1, T2, TResult, U1, U2, UResult>(this Func<T1, T2, TResult> F, Func<U1, T1> ArgConv1, Func<U2, T2> ArgConv2, Func<TResult, UResult> ResConv) {
     return (arg1, arg2) => ResConv(F(ArgConv1(arg1), ArgConv2(arg2)));
@@ -7301,11 +7387,11 @@ namespace Dafny {
   }
 } // end of namespace Dafny
 internal static class FuncExtensions {
-  public static Func<U, UResult> DowncastClone<T, TResult, U, UResult>(this Func<T, TResult> F, Func<U, T> ArgConv, Func<TResult, UResult> ResConv) {
-    return arg => ResConv(F(ArgConv(arg)));
-  }
   public static Func<UResult> DowncastClone<TResult, UResult>(this Func<TResult> F, Func<TResult, UResult> ResConv) {
     return () => ResConv(F());
+  }
+  public static Func<U, UResult> DowncastClone<T, TResult, U, UResult>(this Func<T, TResult> F, Func<U, T> ArgConv, Func<TResult, UResult> ResConv) {
+    return arg => ResConv(F(ArgConv(arg)));
   }
   public static Func<U1, U2, UResult> DowncastClone<T1, T2, TResult, U1, U2, UResult>(this Func<T1, T2, TResult> F, Func<U1, T1> ArgConv1, Func<U2, T2> ArgConv2, Func<TResult, UResult> ResConv) {
     return (arg1, arg2) => ResConv(F(ArgConv1(arg1), ArgConv2(arg2)));
@@ -7351,42 +7437,42 @@ namespace FileInput {
 namespace _module {
 
   public partial class __default {
-    public static void _Main(Dafny.ISequence<Dafny.ISequence<char>> __noArgsParameter)
+    public static void _Main(Dafny.ISequence<Dafny.ISequence<Dafny.Rune>> __noArgsParameter)
     {
       byte[] _0_input;
       _0_input = FileInput.Reader.getContent();
       if ((new BigInteger((_0_input).Length)) < (new BigInteger(8))) {
-        Dafny.Helpers.Print((Dafny.Sequence<char>.FromString("Invalid input")));
+        Dafny.Helpers.Print((Dafny.Sequence<Dafny.Rune>.UnicodeFromString("Invalid input")).ToVerbatimString(false));
       } else {
         bool _1_b;
         _1_b = FileInput.Reader.shouldEncode();
         if (_1_b) {
-          Dafny.Helpers.Print((Dafny.Sequence<char>.FromString("Encoding")));
-          Dafny.Helpers.Print((Dafny.Sequence<char>.FromString("\n")));
+          Dafny.Helpers.Print((Dafny.Sequence<Dafny.Rune>.UnicodeFromString("Encoding")).ToVerbatimString(false));
+          Dafny.Helpers.Print((Dafny.Sequence<Dafny.Rune>.UnicodeFromString("\n")).ToVerbatimString(false));
           uint _2_width;
           _2_width = __default.pack(Dafny.Helpers.SeqFromArray(_0_input).Subsequence(BigInteger.Zero, new BigInteger(4)));
           uint _3_height;
           _3_height = __default.pack(Dafny.Helpers.SeqFromArray(_0_input).Subsequence(new BigInteger(4), new BigInteger(8)));
           byte _4_channels;
           _4_channels = FileInput.Reader.getChannels();
-          Dafny.Helpers.Print((Dafny.Sequence<char>.FromString("Width = ")));
+          Dafny.Helpers.Print((Dafny.Sequence<Dafny.Rune>.UnicodeFromString("Width = ")).ToVerbatimString(false));
           Dafny.Helpers.Print((_2_width));
-          Dafny.Helpers.Print((Dafny.Sequence<char>.FromString("\n")));
-          Dafny.Helpers.Print((Dafny.Sequence<char>.FromString("Height = ")));
+          Dafny.Helpers.Print((Dafny.Sequence<Dafny.Rune>.UnicodeFromString("\n")).ToVerbatimString(false));
+          Dafny.Helpers.Print((Dafny.Sequence<Dafny.Rune>.UnicodeFromString("Height = ")).ToVerbatimString(false));
           Dafny.Helpers.Print((_3_height));
-          Dafny.Helpers.Print((Dafny.Sequence<char>.FromString("\n")));
-          Dafny.Helpers.Print((Dafny.Sequence<char>.FromString("Channels = ")));
+          Dafny.Helpers.Print((Dafny.Sequence<Dafny.Rune>.UnicodeFromString("\n")).ToVerbatimString(false));
+          Dafny.Helpers.Print((Dafny.Sequence<Dafny.Rune>.UnicodeFromString("Channels = ")).ToVerbatimString(false));
           Dafny.Helpers.Print((_4_channels));
-          Dafny.Helpers.Print((Dafny.Sequence<char>.FromString("\n")));
+          Dafny.Helpers.Print((Dafny.Sequence<Dafny.Rune>.UnicodeFromString("\n")).ToVerbatimString(false));
           if (((new BigInteger((_0_input).Length)) - (new BigInteger(8))) != (((new BigInteger(_2_width)) * (new BigInteger(_3_height))) * (new BigInteger(_4_channels)))) {
-            Dafny.Helpers.Print((Dafny.Sequence<char>.FromString("Invalid input (width * height * channels)")));
+            Dafny.Helpers.Print((Dafny.Sequence<Dafny.Rune>.UnicodeFromString("Invalid input (width * height * channels)")).ToVerbatimString(false));
           } else {
-            Dafny.Helpers.Print((Dafny.Sequence<char>.FromString("Building image\n")));
+            Dafny.Helpers.Print((Dafny.Sequence<Dafny.Rune>.UnicodeFromString("Building image\n")).ToVerbatimString(false));
             _IImage _5_image;
             _5_image = _module.Image.create(_module.Desc.create(_2_width, _3_height, (byte)(_4_channels), _module.ColorSpace.create_SRGB()), Dafny.Helpers.SeqFromArray(_0_input).Drop(new BigInteger(8)));
             byte[] _6_result = new byte[0];
             BigInteger _7_len = BigInteger.Zero;
-            Dafny.Helpers.Print((Dafny.Sequence<char>.FromString("Start encoding\n")));
+            Dafny.Helpers.Print((Dafny.Sequence<Dafny.Rune>.UnicodeFromString("Start encoding\n")).ToVerbatimString(false));
             byte[] _out0;
             BigInteger _out1;
             __default.encodeAll(_5_image, out _out0, out _out1);
@@ -7408,65 +7494,107 @@ namespace _module {
             if (((_7_len).Sign != -1) && ((_7_len) < (new BigInteger(4294967296L)))) {
               FileInput.Reader.putContent(_6_result, (uint)(_7_len));
             } else {
-              Dafny.Helpers.Print((Dafny.Sequence<char>.FromString("Error: buffer too big")));
+              Dafny.Helpers.Print((Dafny.Sequence<Dafny.Rune>.UnicodeFromString("Error: buffer too big")).ToVerbatimString(false));
             }
           }
         } else {
-          Dafny.Helpers.Print((Dafny.Sequence<char>.FromString("Decoding")));
-          _IOption<_IImage> _9_result;
-          _IOption<_IImage> _out4;
+          Dafny.Helpers.Print((Dafny.Sequence<Dafny.Rune>.UnicodeFromString("Decoding\n")).ToVerbatimString(false));
+          _IOption<_System._ITuple2<_IDesc, byte[]>> _9_result;
+          _IOption<_System._ITuple2<_IDesc, byte[]>> _out4;
           _out4 = __default.decodeAll(_0_input);
           _9_result = _out4;
-          BigInteger _10_repeat;
-          _10_repeat = BigInteger.Zero;
-          while ((_10_repeat) < (new BigInteger(9))) {
-            Dafny.Helpers.Print((_10_repeat));
-            byte[] _11_myinput;
-            _11_myinput = FileInput.Reader.getContent();
-            _IOption<_IImage> _out5;
-            _out5 = __default.decodeAll(_11_myinput);
-            _9_result = _out5;
-            _10_repeat = (_10_repeat) + (BigInteger.One);
+          if ((_9_result).is_Some) {
+            _IDesc _10_desc;
+            _10_desc = ((_9_result).dtor_some).dtor__0;
+            Dafny.Helpers.Print((Dafny.Sequence<Dafny.Rune>.UnicodeFromString("Width = ")).ToVerbatimString(false));
+            Dafny.Helpers.Print(((_10_desc).dtor_width));
+            Dafny.Helpers.Print((Dafny.Sequence<Dafny.Rune>.UnicodeFromString("\n")).ToVerbatimString(false));
+            Dafny.Helpers.Print((Dafny.Sequence<Dafny.Rune>.UnicodeFromString("Height = ")).ToVerbatimString(false));
+            Dafny.Helpers.Print(((_10_desc).dtor_height));
+            Dafny.Helpers.Print((Dafny.Sequence<Dafny.Rune>.UnicodeFromString("\n")).ToVerbatimString(false));
+            Dafny.Helpers.Print((Dafny.Sequence<Dafny.Rune>.UnicodeFromString("Channels = ")).ToVerbatimString(false));
+            Dafny.Helpers.Print(((_10_desc).dtor_channels));
+            Dafny.Helpers.Print((Dafny.Sequence<Dafny.Rune>.UnicodeFromString("\n")).ToVerbatimString(false));
           }
+          Dafny.Helpers.Print((Dafny.Sequence<Dafny.Rune>.UnicodeFromString("Start decoding\n")).ToVerbatimString(false));
+          BigInteger _11_repeat;
+          _11_repeat = BigInteger.Zero;
+          while ((_11_repeat) < (new BigInteger(9))) {
+            Dafny.Helpers.Print((_11_repeat));
+            byte[] _12_myinput;
+            _12_myinput = FileInput.Reader.getContent();
+            _IOption<_System._ITuple2<_IDesc, byte[]>> _out5;
+            _out5 = __default.decodeAll(_12_myinput);
+            _9_result = _out5;
+            _11_repeat = (_11_repeat) + (BigInteger.One);
+          }
+          Dafny.Helpers.Print((Dafny.Sequence<Dafny.Rune>.UnicodeFromString("\n")).ToVerbatimString(false));
           if ((_9_result).is_None) {
-            Dafny.Helpers.Print((Dafny.Sequence<char>.FromString("Invalid encoding")));
+            Dafny.Helpers.Print((Dafny.Sequence<Dafny.Rune>.UnicodeFromString("Invalid encoding")).ToVerbatimString(false));
           } else {
-            _IImage _12_image;
-            _12_image = (_9_result).dtor_some;
-            uint _13_w;
-            _13_w = ((_12_image).dtor_desc).dtor_width;
-            uint _14_h;
-            _14_h = ((_12_image).dtor_desc).dtor_height;
-            Dafny.ISequence<byte> _15_ws;
-            _15_ws = __default.unpack(_13_w);
-            Dafny.ISequence<byte> _16_hs;
-            _16_hs = __default.unpack(_14_h);
-            byte[] _17_buffer;
-            byte[] _nw0 = new byte[Dafny.Helpers.ToIntChecked((new BigInteger(8)) + (new BigInteger(((_12_image).dtor_data).Count)), "array size exceeds memory limit")];
-            _17_buffer = _nw0;
-            (_17_buffer)[(int)((BigInteger.Zero))] = (_15_ws).Select(BigInteger.Zero);
-            (_17_buffer)[(int)((BigInteger.One))] = (_15_ws).Select(BigInteger.One);
-            (_17_buffer)[(int)((new BigInteger(2)))] = (_15_ws).Select(new BigInteger(2));
-            (_17_buffer)[(int)((new BigInteger(3)))] = (_15_ws).Select(new BigInteger(3));
-            (_17_buffer)[(int)((new BigInteger(4)))] = (_16_hs).Select(BigInteger.Zero);
-            (_17_buffer)[(int)((new BigInteger(5)))] = (_16_hs).Select(BigInteger.One);
-            (_17_buffer)[(int)((new BigInteger(6)))] = (_16_hs).Select(new BigInteger(2));
-            (_17_buffer)[(int)((new BigInteger(7)))] = (_16_hs).Select(new BigInteger(3));
-            BigInteger _18_i;
-            _18_i = BigInteger.Zero;
-            while ((_18_i) < (new BigInteger(((_12_image).dtor_data).Count))) {
-              BigInteger _index0 = (new BigInteger(8)) + (_18_i);
-              (_17_buffer)[(int)(_index0)] = ((_12_image).dtor_data).Select(_18_i);
-              _18_i = (_18_i) + (BigInteger.One);
+            _IDesc _13_desc;
+            _13_desc = ((_9_result).dtor_some).dtor__0;
+            byte[] _14_pixelData;
+            _14_pixelData = ((_9_result).dtor_some).dtor__1;
+            uint _15_w;
+            _15_w = (_13_desc).dtor_width;
+            uint _16_h;
+            _16_h = (_13_desc).dtor_height;
+            Dafny.ISequence<byte> _17_ws;
+            _17_ws = __default.unpack(_15_w);
+            Dafny.ISequence<byte> _18_hs;
+            _18_hs = __default.unpack(_16_h);
+            byte[] _19_buffer;
+            byte[] _nw0 = new byte[Dafny.Helpers.ToIntChecked((new BigInteger(8)) + (new BigInteger((_14_pixelData).Length)), "array size exceeds memory limit")];
+            _19_buffer = _nw0;
+            (_19_buffer)[(int)((BigInteger.Zero))] = (_17_ws).Select(BigInteger.Zero);
+            (_19_buffer)[(int)((BigInteger.One))] = (_17_ws).Select(BigInteger.One);
+            (_19_buffer)[(int)((new BigInteger(2)))] = (_17_ws).Select(new BigInteger(2));
+            (_19_buffer)[(int)((new BigInteger(3)))] = (_17_ws).Select(new BigInteger(3));
+            (_19_buffer)[(int)((new BigInteger(4)))] = (_18_hs).Select(BigInteger.Zero);
+            (_19_buffer)[(int)((new BigInteger(5)))] = (_18_hs).Select(BigInteger.One);
+            (_19_buffer)[(int)((new BigInteger(6)))] = (_18_hs).Select(new BigInteger(2));
+            (_19_buffer)[(int)((new BigInteger(7)))] = (_18_hs).Select(new BigInteger(3));
+            BigInteger _20_i;
+            _20_i = BigInteger.Zero;
+            while ((_20_i) < (new BigInteger((_14_pixelData).Length))) {
+              BigInteger _index0 = (new BigInteger(8)) + (_20_i);
+              (_19_buffer)[(int)(_index0)] = (_14_pixelData)[(int)(_20_i)];
+              _20_i = (_20_i) + (BigInteger.One);
             }
-            if (((new BigInteger((_17_buffer).Length)).Sign != -1) && ((new BigInteger((_17_buffer).Length)) < (new BigInteger(4294967296L)))) {
-              FileInput.Reader.putContent(_17_buffer, (uint)(_17_buffer).LongLength);
+            if (((new BigInteger((_19_buffer).Length)).Sign != -1) && ((new BigInteger((_19_buffer).Length)) < (new BigInteger(4294967296L)))) {
+              FileInput.Reader.putContent(_19_buffer, (uint)(_19_buffer).LongLength);
             } else {
-              Dafny.Helpers.Print((Dafny.Sequence<char>.FromString("Error: buffer too big")));
+              Dafny.Helpers.Print((Dafny.Sequence<Dafny.Rune>.UnicodeFromString("Error: buffer too big")).ToVerbatimString(false));
             }
           }
         }
       }
+    }
+    public static byte[] pixelsToByteArray(_IRGBA[] rgbs, BigInteger channels)
+    {
+      byte[] arr = new byte[0];
+      byte[] _nw0 = new byte[Dafny.Helpers.ToIntChecked((new BigInteger((rgbs).Length)) * (channels), "array size exceeds memory limit")];
+      arr = _nw0;
+      BigInteger _0_i;
+      _0_i = BigInteger.Zero;
+      BigInteger _1_k;
+      _1_k = BigInteger.Zero;
+      while ((_0_i) < (new BigInteger((rgbs).Length))) {
+        (arr)[(int)((_1_k))] = ((rgbs)[(int)(_0_i)]).dtor_r;
+        BigInteger _index0 = (_1_k) + (BigInteger.One);
+        (arr)[(int)(_index0)] = ((rgbs)[(int)(_0_i)]).dtor_g;
+        BigInteger _index1 = (_1_k) + (new BigInteger(2));
+        (arr)[(int)(_index1)] = ((rgbs)[(int)(_0_i)]).dtor_b;
+        if ((channels) == (new BigInteger(4))) {
+          BigInteger _index2 = (_1_k) + (new BigInteger(3));
+          (arr)[(int)(_index2)] = ((rgbs)[(int)(_0_i)]).dtor_a;
+        } else {
+        }
+        _0_i = (_0_i) + (BigInteger.One);
+        _1_k = (_1_k) + (channels);
+      }
+      return arr;
     }
     public static _IOption<_IRGBDiff> canDiff(_IRGBA curr, _IRGBA prev)
     {
@@ -7673,7 +7801,7 @@ namespace _module {
       }
     after_match0: ;
     }
-    public static void decodeAEI(_IOp[] ops, BigInteger size, out _IRGBA[] r, out bool ok)
+    public static void decodeAEI(_IOp[] ops, BigInteger opsLen, BigInteger size, out _IRGBA[] r, out bool ok)
     {
       r = new _IRGBA[0];
       ok = false;
@@ -7686,7 +7814,7 @@ namespace _module {
       _IRGBA[] _nw0 = Dafny.ArrayHelpers.InitNewArray1<_IRGBA>(RGBA.Default(), Dafny.Helpers.ToIntChecked(size, "array size exceeds memory limit"));
       r = _nw0;
       ok = true;
-      while ((_0_i) < (new BigInteger((ops).Length))) {
+      while ((_0_i) < (opsLen)) {
         _IOp _3_op;
         _3_op = (ops)[(int)(_0_i)];
         bool _4_ok_k = false;
@@ -7791,10 +7919,10 @@ namespace _module {
     public static BigInteger writeHeader(_IDesc desc, byte[] result)
     {
       BigInteger len = BigInteger.Zero;
-      (result)[(int)((BigInteger.Zero))] = (byte)('q');
-      (result)[(int)((BigInteger.One))] = (byte)('o');
-      (result)[(int)((new BigInteger(2)))] = (byte)('i');
-      (result)[(int)((new BigInteger(3)))] = (byte)('f');
+      (result)[(int)((BigInteger.Zero))] = (byte)((new Dafny.Rune('q')).Value);
+      (result)[(int)((BigInteger.One))] = (byte)((new Dafny.Rune('o')).Value);
+      (result)[(int)((new BigInteger(2)))] = (byte)((new Dafny.Rune('i')).Value);
+      (result)[(int)((new BigInteger(3)))] = (byte)((new Dafny.Rune('f')).Value);
       (result)[(int)((new BigInteger(4)))] = (__default.unpack((desc).dtor_width)).Select(BigInteger.Zero);
       (result)[(int)((new BigInteger(5)))] = (__default.unpack((desc).dtor_width)).Select(BigInteger.One);
       (result)[(int)((new BigInteger(6)))] = (__default.unpack((desc).dtor_width)).Select(new BigInteger(2));
@@ -7943,7 +8071,7 @@ namespace _module {
     public static _IOption<_IDesc> parseHeader(Dafny.ISequence<byte> byteStream)
     {
       _IOption<_IDesc> r = Option<_IDesc>.Default();
-      if (!((byteStream).Subsequence(BigInteger.Zero, new BigInteger(4))).Equals(Dafny.Sequence<byte>.FromElements((byte)('q'), (byte)('o'), (byte)('i'), (byte)('f')))) {
+      if (!((byteStream).Subsequence(BigInteger.Zero, new BigInteger(4))).Equals(Dafny.Sequence<byte>.FromElements((byte)((new Dafny.Rune('q')).Value), (byte)((new Dafny.Rune('o')).Value), (byte)((new Dafny.Rune('i')).Value), (byte)((new Dafny.Rune('f')).Value)))) {
         r = _module.Option<_IDesc>.create_None();
         return r;
       }
@@ -7957,11 +8085,11 @@ namespace _module {
       return r;
       return r;
     }
-    public static _IOption<_IImage> decodeAll(byte[] byteStream)
+    public static _IOption<_System._ITuple2<_IDesc, byte[]>> decodeAll(byte[] byteStream)
     {
-      _IOption<_IImage> r = Option<_IImage>.Default();
+      _IOption<_System._ITuple2<_IDesc, byte[]>> r = Option<_System._ITuple2<_IDesc, byte[]>>.Default();
       if ((new BigInteger((byteStream).Length)) < ((new BigInteger(14)) + (new BigInteger(8)))) {
-        r = _module.Option<_IImage>.create_None();
+        r = _module.Option<_System._ITuple2<_IDesc, byte[]>>.create_None();
         return r;
       } else {
         BigInteger _0_len;
@@ -7971,7 +8099,7 @@ namespace _module {
         Dafny.ISequence<byte> _2_footer;
         _2_footer = Dafny.Helpers.SeqFromArray(byteStream).Drop((_0_len) - (new BigInteger(8)));
         if (!(_2_footer).Equals(__default.specFooter())) {
-          r = _module.Option<_IImage>.create_None();
+          r = _module.Option<_System._ITuple2<_IDesc, byte[]>>.create_None();
           return r;
         }
         _IOption<_IDesc> _3_descOption;
@@ -7979,7 +8107,7 @@ namespace _module {
         _out0 = __default.parseHeader(_1_header);
         _3_descOption = _out0;
         if ((_3_descOption).is_None) {
-          r = _module.Option<_IImage>.create_None();
+          r = _module.Option<_System._ITuple2<_IDesc, byte[]>>.create_None();
           return r;
         }
         _IDesc _4_desc;
@@ -7992,7 +8120,7 @@ namespace _module {
         _5_opsOption = _out1;
         _6_len_k = _out2;
         if ((_5_opsOption).is_None) {
-          r = _module.Option<_IImage>.create_None();
+          r = _module.Option<_System._ITuple2<_IDesc, byte[]>>.create_None();
           return r;
         }
         _IOp[] _7_ops;
@@ -8001,20 +8129,22 @@ namespace _module {
         bool _9_ok = false;
         _IRGBA[] _out3;
         bool _out4;
-        __default.decodeAEI(_7_ops, (new BigInteger((_4_desc).dtor_width)) * (new BigInteger((_4_desc).dtor_height)), out _out3, out _out4);
+        __default.decodeAEI(_7_ops, _6_len_k, (new BigInteger((_4_desc).dtor_width)) * (new BigInteger((_4_desc).dtor_height)), out _out3, out _out4);
         _8_rgbs = _out3;
         _9_ok = _out4;
         if (_9_ok) {
-          Dafny.ISequence<byte> _10_data;
-          _10_data = __default.toByteStream(_4_desc, Dafny.Helpers.SeqFromArray(_8_rgbs));
           if ((new BigInteger((_8_rgbs).Length)) != ((new BigInteger((_4_desc).dtor_width)) * (new BigInteger((_4_desc).dtor_height)))) {
-            r = _module.Option<_IImage>.create_None();
+            r = _module.Option<_System._ITuple2<_IDesc, byte[]>>.create_None();
             return r;
           }
-          r = _module.Option<_IImage>.create_Some(_module.Image.create(_4_desc, _10_data));
+          byte[] _10_dataArray;
+          byte[] _out5;
+          _out5 = __default.pixelsToByteArray(_8_rgbs, new BigInteger((_4_desc).dtor_channels));
+          _10_dataArray = _out5;
+          r = _module.Option<_System._ITuple2<_IDesc, byte[]>>.create_Some(_System.Tuple2<_IDesc, byte[]>.create(_4_desc, _10_dataArray));
           return r;
         } else {
-          r = _module.Option<_IImage>.create_None();
+          r = _module.Option<_System._ITuple2<_IDesc, byte[]>>.create_None();
           return r;
         }
       }
@@ -8337,10 +8467,10 @@ namespace _module {
       return ;
     }
     public static Dafny.ISequence<byte> specHeader(_IDesc desc) {
-      return Dafny.Sequence<byte>.Concat(Dafny.Sequence<byte>.Concat(Dafny.Sequence<byte>.Concat(Dafny.Sequence<byte>.Concat(Dafny.Sequence<byte>.FromElements((byte)('q'), (byte)('o'), (byte)('i'), (byte)('f')), __default.unpack((desc).dtor_width)), __default.unpack((desc).dtor_height)), Dafny.Sequence<byte>.FromElements((byte)((desc).dtor_channels))), Dafny.Sequence<byte>.FromElements(__default.byteFromColorSpace((desc).dtor_colorSpace)));
+      return Dafny.Sequence<byte>.Concat(Dafny.Sequence<byte>.Concat(Dafny.Sequence<byte>.Concat(Dafny.Sequence<byte>.Concat(Dafny.Sequence<byte>.FromElements((byte)((new Dafny.Rune('q')).Value), (byte)((new Dafny.Rune('o')).Value), (byte)((new Dafny.Rune('i')).Value), (byte)((new Dafny.Rune('f')).Value)), __default.unpack((desc).dtor_width)), __default.unpack((desc).dtor_height)), Dafny.Sequence<byte>.FromElements((byte)((desc).dtor_channels))), Dafny.Sequence<byte>.FromElements(__default.byteFromColorSpace((desc).dtor_colorSpace)));
     }
     public static bool validHeader(Dafny.ISequence<byte> bits) {
-      return ((((new BigInteger((bits).Count)) == (new BigInteger(14))) && (((bits).Subsequence(BigInteger.Zero, new BigInteger(4))).Equals(Dafny.Sequence<byte>.FromElements((byte)('q'), (byte)('o'), (byte)('i'), (byte)('f'))))) && ((((byte)(3)) <= ((bits).Select(new BigInteger(12)))) && (((bits).Select(new BigInteger(12))) <= ((byte)(4))))) && ((((byte)(0)) <= ((bits).Select(new BigInteger(13)))) && (((bits).Select(new BigInteger(13))) <= ((byte)(1))));
+      return ((((new BigInteger((bits).Count)) == (new BigInteger(14))) && (((bits).Subsequence(BigInteger.Zero, new BigInteger(4))).Equals(Dafny.Sequence<byte>.FromElements((byte)((new Dafny.Rune('q')).Value), (byte)((new Dafny.Rune('o')).Value), (byte)((new Dafny.Rune('i')).Value), (byte)((new Dafny.Rune('f')).Value))))) && ((((byte)(3)) <= ((bits).Select(new BigInteger(12)))) && (((bits).Select(new BigInteger(12))) <= ((byte)(4))))) && ((((byte)(0)) <= ((bits).Select(new BigInteger(13)))) && (((bits).Select(new BigInteger(13))) <= ((byte)(1))));
     }
     public static _IDesc specHeaderDesc(Dafny.ISequence<byte> header) {
       return _module.Desc.create(__default.pack((header).Subsequence(new BigInteger(4), new BigInteger(8))), __default.pack((header).Subsequence(new BigInteger(8), new BigInteger(12))), (byte)((header).Select(new BigInteger(12))), __default.colorSpaceFromByte((header).Select(new BigInteger(13))));
@@ -9837,6 +9967,6 @@ namespace _module {
 } // end of namespace _module
 class __CallToMain {
   public static void Main(string[] args) {
-    Dafny.Helpers.WithHaltHandling(() => _module.__default._Main(Dafny.Sequence<Dafny.ISequence<char>>.FromMainArguments(args)));
+    Dafny.Helpers.WithHaltHandling(() => _module.__default._Main(Dafny.Sequence<Dafny.ISequence<Dafny.Rune>>.UnicodeFromMainArguments(args)));
   }
 }

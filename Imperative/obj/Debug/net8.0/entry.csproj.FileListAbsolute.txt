@@ -1,0 +1,14 @@
+C:\Users\Mesul\Desktop\Lab\dafny\VDPD_project2025-2026-Imperative_RGBAencoding\Imperative\obj\Debug\net8.0\entry.GeneratedMSBuildEditorConfig.editorconfig
+C:\Users\Mesul\Desktop\Lab\dafny\VDPD_project2025-2026-Imperative_RGBAencoding\Imperative\obj\Debug\net8.0\entry.AssemblyInfoInputs.cache
+C:\Users\Mesul\Desktop\Lab\dafny\VDPD_project2025-2026-Imperative_RGBAencoding\Imperative\obj\Debug\net8.0\entry.AssemblyInfo.cs
+C:\Users\Mesul\Desktop\Lab\dafny\VDPD_project2025-2026-Imperative_RGBAencoding\Imperative\obj\Debug\net8.0\entry.csproj.CoreCompileInputs.cache
+C:\Users\Mesul\Desktop\Lab\dafny\VDPD_project2025-2026-Imperative_RGBAencoding\Imperative\entry.exe
+C:\Users\Mesul\Desktop\Lab\dafny\VDPD_project2025-2026-Imperative_RGBAencoding\Imperative\obj\Debug\net8.0\entry.dll
+C:\Users\Mesul\Desktop\Lab\dafny\VDPD_project2025-2026-Imperative_RGBAencoding\Imperative\obj\Debug\net8.0\refint\entry.dll
+C:\Users\Mesul\Desktop\Lab\dafny\VDPD_project2025-2026-Imperative_RGBAencoding\Imperative\obj\Debug\net8.0\entry.pdb
+C:\Users\Mesul\Desktop\Lab\dafny\VDPD_project2025-2026-Imperative_RGBAencoding\Imperative\entry.deps.json
+C:\Users\Mesul\Desktop\Lab\dafny\VDPD_project2025-2026-Imperative_RGBAencoding\Imperative\obj\Debug\net8.0\entry.genruntimeconfig.cache
+C:\Users\Mesul\Desktop\Lab\dafny\VDPD_project2025-2026-Imperative_RGBAencoding\Imperative\entry.runtimeconfig.json
+C:\Users\Mesul\Desktop\Lab\dafny\VDPD_project2025-2026-Imperative_RGBAencoding\Imperative\entry.dll
+C:\Users\Mesul\Desktop\Lab\dafny\VDPD_project2025-2026-Imperative_RGBAencoding\Imperative\obj\Debug\net8.0\ref\entry.dll
+C:\Users\Mesul\Desktop\Lab\dafny\VDPD_project2025-2026-Imperative_RGBAencoding\Imperative\entry.pdb

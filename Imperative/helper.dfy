@@ -5,6 +5,7 @@ https://qoiformat.org/qoi-specification.pdf
 
 (C) Stefan Ciobaca 2023-2024
  */
+include "spec.dfy"
 
 datatype Option<T> = None | Some(some:T)
 
@@ -68,4 +69,59 @@ lemma unpack_pack(x : uint32)
   ensures pack(unpack(x)) == x
 {
 }
+    
+    
+lemma toByteStreamRGBLast(s: seq<RGBA>, x: RGBA)
+  ensures toByteStreamRGB(s + [x]) == toByteStreamRGB(s) + [x.r, x.g, x.b]
+{
+  if |s| == 0 {
+    // Cazul de bază este trivial pentru Dafny
+  } else {
+    // Pasul inductiv
+    calc {
+      toByteStreamRGB(s + [x]);
+      
+      // 1. Expandam definitia functiei pentru secventa (s + [x])
+      // Dafny stie ca primul element e s[0] si restul e s[1..] + [x]
+      { assert (s + [x])[0] == s[0]; }
+      { assert (s + [x])[1..] == s[1..] + [x]; }
+      [s[0].r, s[0].g, s[0].b] + toByteStreamRGB(s[1..] + [x]);
+      
+      // 2. Aplicam ipoteza inductiva (apelul recursiv al lemei)
+      { toByteStreamRGBLast(s[1..], x); }
+      [s[0].r, s[0].g, s[0].b] + (toByteStreamRGB(s[1..]) + [x.r, x.g, x.b]);
+      
+      // 3. Folosim proprietatea de asociativitate a secventelor: (A + B) + C == A + (B + C)
+      ([s[0].r, s[0].g, s[0].b] + toByteStreamRGB(s[1..])) + [x.r, x.g, x.b];
+      
+      // 4. Recunoastem definitia functiei pentru s
+      toByteStreamRGB(s) + [x.r, x.g, x.b];
+    }
+  }
+}
 
+lemma toByteStreamRGBALast(s: seq<RGBA>, x: RGBA)
+  ensures toByteStreamRGBA(s + [x]) == toByteStreamRGBA(s) + [x.r, x.g, x.b, x.a]
+{
+  if |s| == 0 {
+  } else {
+    calc {
+      toByteStreamRGBA(s + [x]);
+      
+      { assert (s + [x])[0] == s[0]; }
+      { assert (s + [x])[1..] == s[1..] + [x]; }
+      [s[0].r, s[0].g, s[0].b, s[0].a] + toByteStreamRGBA(s[1..] + [x]);
+      
+      { toByteStreamRGBALast(s[1..], x); }
+      [s[0].r, s[0].g, s[0].b, s[0].a] + (toByteStreamRGBA(s[1..]) + [x.r, x.g, x.b, x.a]);
+      
+      ([s[0].r, s[0].g, s[0].b, s[0].a] + toByteStreamRGBA(s[1..])) + [x.r, x.g, x.b, x.a];
+      
+      toByteStreamRGBA(s) + [x.r, x.g, x.b, x.a];
+    }
+  }
+}
+
+  
+
+  

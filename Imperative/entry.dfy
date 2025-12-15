@@ -71,32 +71,47 @@ method Main()
         }
       }
     }
-    else
-    {
-      print "Decoding";
-      var result : Option<Image> := decodeAll(input);
+    else {
+      print "Decoding\n";
+      
+      // decodeAll returneaza acum (Desc, array<byte>)
+      var result : Option<(Desc, array<byte>)> := decodeAll(input);
+
+      if (result.Some?) {
+        var desc := result.some.0; // .0 este primul element din tuplu (Desc)
+        print "Width = ", desc.width, "\n";
+        print "Height = ", desc.height, "\n";
+        print "Channels = ", desc.channels, "\n";
+      }
+
+      print "Start decoding\n";
+
       var repeat := 0;
-      while (repeat < 9)
+      while repeat < 9
         invariant 0 <= repeat <= 10
       {
         print repeat;
         var myinput := FileInput.Reader.getContent();
         result := decodeAll(myinput);
-        //print result.Some?;
         repeat := repeat + 1;
       }
-      if (result.None?)
-      {
+      print "\n"; 
+
+      if (result.None?) {
         print "Invalid encoding";
-      }
-      else
-      {
-        var image : Image := result.some;
-        var w : uint32 := image.desc.width;
-        var h : uint32 := image.desc.height;
+      } else {
+        var desc := result.some.0;
+        var pixelData := result.some.1; // Acesta este array-ul rapid de bytes!
+        
+        var w : uint32 := desc.width;
+        var h : uint32 := desc.height;
         var ws := unpack(w);
         var hs := unpack(h);
-        var buffer : array<byte> := new byte [8 + |image.data|];
+        
+        // Cream buffer-ul final (8 bytes header custom + pixel data)
+        var buffer : array<byte> := new byte [8 + pixelData.Length];
+        
+        // Scriem header-ul tau custom pentru output
         buffer[0] := ws[0];
         buffer[1] := ws[1];
         buffer[2] := ws[2];
@@ -105,13 +120,16 @@ method Main()
         buffer[5] := hs[1];
         buffer[6] := hs[2];
         buffer[7] := hs[3];
+        
         var i : int := 0;
-        while (i < |image.data|)
-          invariant 0 <= i <= |image.data|
+        // Aceasta bucla este acum RAPIDA (O(N)) pentru ca lucram array-la-array
+        while (i < pixelData.Length)
+          invariant 0 <= i <= pixelData.Length
         {
-          buffer[8 + i] := image.data[i];
+          buffer[8 + i] := pixelData[i];
           i := i + 1;
         }
+        
         if (0 <= buffer.Length < 4294967296) {
           FileInput.Reader.putContent(buffer, buffer.Length as uint32);
         } else {
